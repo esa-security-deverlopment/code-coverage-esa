@@ -30,7 +30,7 @@ class Test(unittest.TestCase):
         self.assertTrue(task_id)
 
         task_data = codecoverage.get_task_details(task_id)
-        self.assertEqual(task_data["metadata"]["name"], "build-linux64-ccov/opt")
+        self.assertEqual(task_data["metadata"]["name"], "Gecko Decision Task")
 
         revision = task_data["payload"]["env"]["GECKO_HEAD_REV"]
         task_id_2 = codecoverage.get_task("mozilla-central", revision)
@@ -39,7 +39,7 @@ class Test(unittest.TestCase):
         artifacts = codecoverage.get_task_artifacts(task_id)
         chosen_artifact = None
         for artifact in artifacts:
-            if artifact["name"] == "public/build/target.txt":
+            if artifact["name"] == "public/target-tasks.json":
                 chosen_artifact = artifact
         self.assertIsNotNone(chosen_artifact)
 
@@ -53,17 +53,29 @@ class Test(unittest.TestCase):
                 raise e
 
         codecoverage.download_artifact(task_id, chosen_artifact, "ccov-artifacts")
-        self.assertTrue(os.path.exists("ccov-artifacts/%s_target.txt" % task_id))
-        os.remove("ccov-artifacts/%s_target.txt" % task_id)
+        self.assertTrue(os.path.exists("ccov-artifacts/%s_target-tasks.json" % task_id))
+        os.remove("ccov-artifacts/%s_target-tasks.json" % task_id)
 
         artifact_paths = codecoverage.download_coverage_artifacts(
-            task_id, "cppunit-1proc", None, "ccov-artifacts"
+            task_id, "gtest-1proc", None, "ccov-artifacts"
         )
         self.assertEqual(
             len([a for a in os.listdir("ccov-artifacts") if "grcov" in a]), 2
         )
         self.assertEqual(
             len([a for a in os.listdir("ccov-artifacts") if "jsvm" in a]), 2
+        )
+        self.assertEqual(len([a for a in artifact_paths if "grcov" in a]), 2)
+        self.assertEqual(len([a for a in artifact_paths if "jsvm" in a]), 2)
+
+        artifact_paths = codecoverage.download_coverage_artifacts(
+            task_id, "cppunit-1proc", None, "ccov-artifacts"
+        )
+        self.assertEqual(
+            len([a for a in os.listdir("ccov-artifacts") if "grcov" in a]), 4
+        )
+        self.assertEqual(
+            len([a for a in os.listdir("ccov-artifacts") if "jsvm" in a]), 4
         )
         self.assertEqual(len([a for a in artifact_paths if "grcov" in a]), 2)
         self.assertEqual(len([a for a in artifact_paths if "jsvm" in a]), 2)
@@ -78,6 +90,7 @@ class Test(unittest.TestCase):
 
     def test_suite_name_from_task_name(self):
         cases = [
+            ("test-linux1804-64-ccov/opt-cppunit-1proc", "cppunit"),
             ("test-linux64-ccov/opt-gtest", "gtest"),
             ("test-linux64-ccov/opt-jsreftest-1", "jsreftest"),
             (
@@ -89,6 +102,9 @@ class Test(unittest.TestCase):
             ("test-linux64-ccov/opt-mochitest-5", "mochitest"),
             ("test-windows10-64-ccov/debug-mochitest-5", "mochitest"),
             ("test-windows10-64-ccov/debug-cppunit", "cppunit"),
+            ("build-linux64-ccov/opt", "build"),
+            ("build-android-test-ccov/opt", "build"),
+            ("build-win64-ccov/debug", "build"),
         ]
         for c in cases:
             self.assertEqual(codecoverage.get_suite(c[0]), c[1])

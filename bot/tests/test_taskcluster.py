@@ -34,47 +34,32 @@ def test_get_task_details(mock_taskcluster, LINUX_TASK_ID, LINUX_TASK):
     assert taskcluster.get_task_details(LINUX_TASK_ID) == LINUX_TASK
 
 
-def test_get_task(
-    mock_taskcluster, LINUX_TASK_ID, LATEST_LINUX, WIN_TASK_ID, LATEST_WIN
-):
+def test_get_task(mock_taskcluster, DECISION_TASK_ID, LATEST_DECISION):
     responses.add(
         responses.GET,
-        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.b2a9a4bb5c94de179ae7a3f52fde58c0e2897498.firefox.linux64-ccov-opt",
-        json=LATEST_LINUX,
+        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.7828a10a94b6afb78d18d9b7b83e7aa79337cc24.firefox.decision",
+        json=LATEST_DECISION,
         status=200,
     )
     assert (
-        taskcluster.get_task(
-            "mozilla-central", "b2a9a4bb5c94de179ae7a3f52fde58c0e2897498", "linux"
+        taskcluster.get_decision_task(
+            "mozilla-central", "7828a10a94b6afb78d18d9b7b83e7aa79337cc24"
         )
-        == LINUX_TASK_ID
-    )
-
-    responses.add(
-        responses.GET,
-        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.916103b8675d9fdb28b891cac235d74f9f475942.firefox.win64-ccov-debug",
-        json=LATEST_WIN,
-        status=200,
-    )
-    assert (
-        taskcluster.get_task(
-            "mozilla-central", "916103b8675d9fdb28b891cac235d74f9f475942", "windows"
-        )
-        == WIN_TASK_ID
+        == DECISION_TASK_ID
     )
 
 
 def test_get_task_not_found(mock_taskcluster, TASK_NOT_FOUND):
     responses.add(
         responses.GET,
-        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.b2a9a4bb5c94de179ae7a3f52fde58c0e2897498.firefox.linux64-ccov-opt",
+        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.b2a9a4bb5c94de179ae7a3f52fde58c0e2897498.firefox.decision",
         json=TASK_NOT_FOUND,
         status=404,
     )
 
     assert (
-        taskcluster.get_task(
-            "mozilla-central", "b2a9a4bb5c94de179ae7a3f52fde58c0e2897498", "linux"
+        taskcluster.get_decision_task(
+            "mozilla-central", "b2a9a4bb5c94de179ae7a3f52fde58c0e2897498"
         )
         is None
     )
@@ -85,14 +70,14 @@ def test_get_task_failure(mock_taskcluster, TASK_NOT_FOUND):
     err["code"] = "RandomError"
     responses.add(
         responses.GET,
-        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.b2a9a4bb5c94de179ae7a3f52fde58c0e2897498.firefox.linux64-ccov-opt",
+        "http://taskcluster.test/api/index/v1/task/gecko.v2.mozilla-central.revision.b2a9a4bb5c94de179ae7a3f52fde58c0e2897498.firefox.decision",
         json=err,
         status=500,
     )
 
     with pytest.raises(TaskclusterRestFailure, match="Indexed task not found"):
-        taskcluster.get_task(
-            "mozilla-central", "b2a9a4bb5c94de179ae7a3f52fde58c0e2897498", "linux"
+        taskcluster.get_decision_task(
+            "mozilla-central", "b2a9a4bb5c94de179ae7a3f52fde58c0e2897498"
         )
 
 
@@ -134,24 +119,26 @@ def test_get_tasks_in_group(mock_taskcluster, GROUP_TASKS_1, GROUP_TASKS_2):
 @pytest.mark.parametrize(
     "task_name, expected",
     [
-        ("test-linux64-ccov/debug-mochitest-1", False),
-        ("test-linux64-ccov/debug-mochitest-e10s-7", False),
-        ("test-linux64-ccov/debug-cppunit", False),
-        ("test-linux64-ccov/debug-firefox-ui-functional-remote-e10s", False),
+        ("test-linux64-ccov/debug-mochitest-1", True),
+        ("test-linux64-ccov/debug-mochitest-e10s-7", True),
+        ("test-linux64-ccov/debug-cppunit", True),
+        ("test-linux64-ccov/debug-firefox-ui-functional-remote-e10s", True),
         ("test-linux64-ccov/opt-mochitest-1", True),
         ("test-linux64-ccov/opt-mochitest-e10s-7", True),
         ("test-linux64-ccov/opt-cppunit", True),
+        ("test-linux1804-64-ccov/opt-cppunit", True),
         ("test-linux64-ccov/opt-firefox-ui-functional-remote-e10s", True),
         ("test-windows10-64-ccov/debug-mochitest-1", True),
         ("test-windows10-64-ccov/debug-mochitest-e10s-7", True),
         ("test-windows10-64-ccov/debug-cppunit", True),
-        ("build-linux64-ccov/debug", False),
+        ("build-linux64-ccov/debug", True),
         ("build-linux64-ccov/opt", True),
         ("build-android-test-ccov/opt", True),
         ("build-win64-ccov/debug", True),
         ("test-linux64/debug-mochitest-1", False),
         ("test-windows10-64/debug-cppunit", False),
         ("build-win64/debug", False),
+        ("build-signing-win64-ccov/debug", True),
     ],
 )
 def test_is_coverage_task(task_name, expected):
@@ -164,6 +151,7 @@ def test_is_coverage_task(task_name, expected):
     [
         ("test-linux64-ccov/opt-mochitest-1", "mochitest-1"),
         ("test-linux64-ccov/opt-mochitest-e10s-7", "mochitest-7"),
+        ("test-linux1804-64-ccov/opt-mochitest-e10s-7", "mochitest-7"),
         ("test-linux64-ccov/opt-cppunit", "cppunit"),
         (
             "test-linux64-ccov/opt-firefox-ui-functional-remote-e10s",
@@ -175,6 +163,7 @@ def test_is_coverage_task(task_name, expected):
         ("build-linux64-ccov/opt", "build"),
         ("build-android-test-ccov/opt", "build"),
         ("build-win64-ccov/debug", "build"),
+        ("build-signing-win64-ccov/debug", "build-signing"),
     ],
 )
 def test_name_to_chunk(task_name, expected):
@@ -201,6 +190,7 @@ def test_chunk_to_suite(chunk, expected):
         ("test-linux64-ccov/opt-mochitest-1", "mochitest-plain-1"),
         ("test-linux64-ccov/opt-mochitest-e10s-7", "mochitest-plain-7"),
         ("test-linux64-ccov/opt-cppunit", "cppunittest-1"),
+        ("test-linux1804-64-ccov/opt-cppunit", "cppunittest-1"),
         (
             "test-linux64-ccov/opt-firefox-ui-functional-remote-e10s",
             "firefox-ui-functional-remote-1",
@@ -211,6 +201,7 @@ def test_chunk_to_suite(chunk, expected):
         ("build-linux64-ccov/opt", "build"),
         ("build-android-test-ccov/opt", "build"),
         ("build-win64-ccov/debug", "build"),
+        ("build-signing-win64-ccov/debug", "build-signing"),
     ],
 )
 def test_get_chunk(task_name, expected):
@@ -222,6 +213,7 @@ def test_get_chunk(task_name, expected):
     "task_name, expected",
     [
         ("test-linux64-ccov/opt-mochitest-1", "mochitest-plain"),
+        ("test-linux1804-64-ccov/opt-mochitest-1", "mochitest-plain"),
         ("test-linux64-ccov/opt-mochitest-e10s-7", "mochitest-plain"),
         ("test-linux64-ccov/opt-cppunit", "cppunittest"),
         (
@@ -234,6 +226,7 @@ def test_get_chunk(task_name, expected):
         ("build-linux64-ccov/opt", "build"),
         ("build-android-test-ccov/opt", "build"),
         ("build-win64-ccov/debug", "build"),
+        ("build-signing-win64-ccov/debug", "build-signing"),
     ],
 )
 def test_get_suite(task_name, expected):
@@ -245,6 +238,7 @@ def test_get_suite(task_name, expected):
     "task_name, expected",
     [
         ("test-linux64-ccov/opt-mochitest-1", "linux"),
+        ("test-linux1804-64-ccov/opt-mochitest-1", "linux"),
         ("test-linux64-ccov/opt-mochitest-e10s-7", "linux"),
         ("test-linux64-ccov/opt-cppunit", "linux"),
         ("test-linux64-ccov/opt-firefox-ui-functional-remote-e10s", "linux"),
@@ -254,6 +248,7 @@ def test_get_suite(task_name, expected):
         ("build-linux64-ccov/opt", "linux"),
         ("build-android-test-ccov/opt", "android"),
         ("build-win64-ccov/debug", "windows"),
+        ("build-signing-win64-ccov/debug", "windows"),
     ],
 )
 def test_get_platform(task_name, expected):

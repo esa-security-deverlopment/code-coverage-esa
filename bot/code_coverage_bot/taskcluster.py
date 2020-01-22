@@ -14,24 +14,11 @@ from code_coverage_bot.utils import retry
 logger = structlog.getLogger(__name__)
 taskcluster_config = TaskclusterConfig("https://firefox-ci-tc.services.mozilla.com")
 
+NAME_PARTS_TO_SKIP = ("opt", "debug", "e10s", "1proc")
 
-def get_task(branch, revision, platform):
-    if platform == "linux":
-        platform_name = "linux64-ccov-opt"
-        product = "firefox"
-    elif platform == "windows":
-        platform_name = "win64-ccov-debug"
-        product = "firefox"
-    elif platform == "android-test":
-        platform_name = "android-test-ccov"
-        product = "mobile"
-    elif platform == "android-emulator":
-        platform_name = "android-api-16-ccov-debug"
-        product = "mobile"
-    else:
-        raise Exception(f"Unsupported platform: {platform}")
 
-    route = f"gecko.v2.{branch}.revision.{revision}.{product}.{platform_name}"
+def get_decision_task(branch, revision):
+    route = f"gecko.v2.{branch}.revision.{revision}.firefox.decision"
     index = taskcluster_config.get_service("index")
     try:
         return index.findTask(route)["taskId"]
@@ -99,48 +86,32 @@ def download_artifact(artifact_path, task_id, artifact_name):
     retry(perform_download)
 
 
-BUILD_PLATFORMS = [
-    "build-linux64-ccov/opt",
-    "build-win64-ccov/debug",
-    "build-android-test-ccov/opt",
-]
-
-TEST_PLATFORMS = [
-    "test-linux64-ccov/opt",
-    "test-windows10-64-ccov/debug",
-    "test-android-em-4.3-arm7-api-16-ccov/debug",
-] + BUILD_PLATFORMS
-
-
 def is_coverage_task(task):
-    return any(task["metadata"]["name"].startswith(t) for t in TEST_PLATFORMS)
+    return "ccov" in task["metadata"]["name"].split("/")[0].split("-")
 
 
-def name_to_chunk(name):
+def name_to_chunk(name: str):
     """
     Helper to convert a task name to a chunk
     Used by chunk mapping
     """
-    assert isinstance(name, str)
-
-    # Some tests are run on build machines, we define a placeholder chunk for those.
-    if name in BUILD_PLATFORMS:
+    # Some tests are run on build machines, we define placeholder chunks for those.
+    if name.startswith("build-signing-"):
+        return "build-signing"
+    elif name.startswith("build-"):
         return "build"
 
-    for t in TEST_PLATFORMS:
-        if name.startswith(t):
-            name = name[len(t) + 1 :]
-            break
-    return "-".join([p for p in name.split("-") if p != "e10s"])
+    name = name.split("/")[1]
+
+    return "-".join(p for p in name.split("-") if p not in NAME_PARTS_TO_SKIP)
 
 
-def chunk_to_suite(chunk):
+def chunk_to_suite(chunk: str):
     """
     Helper to convert a chunk to a suite (no numbers)
     Used by chunk mapping
     """
-    assert isinstance(chunk, str)
-    return "-".join([p for p in chunk.split("-") if not p.isdigit()])
+    return "-".join(p for p in chunk.split("-") if not p.isdigit())
 
 
 def get_chunk(task):
@@ -161,10 +132,11 @@ def get_suite(task):
     assert isinstance(task, dict)
     tags = task["tags"]
     extra = task["extra"]
-    treeherder = extra.get("treeherder", {})
 
-    if treeherder.get("jobKind") == "build":
+    if tags.get("kind") == "build":
         return "build"
+    elif tags.get("kind") == "build-signing":
+        return "build-signing"
     elif "suite" in extra:
         if isinstance(extra["suite"], dict):
             return extra["suite"]["name"]
@@ -172,7 +144,7 @@ def get_suite(task):
     else:
         return tags.get("test-type")
 
-    raise Exception("Unknown chunk")
+    raise Exception(f"Unknown chunk for {task}")
 
 
 def get_platform(task):
@@ -180,11 +152,24 @@ def get_platform(task):
     Build clean platform from a Taskcluster task
     """
     assert isinstance(task, dict)
-    assert isinstance(task, dict)
     tags = task.get("tags", {})
     platform = tags.get("os")
+
+    # Fallback on parsing the task name for signing tasks, as they don't have "os" in their tags.
+    name = task.get("metadata", {}).get("name", "")
+    if not platform and "signing" in name:
+        name = name.split("/")[0]
+        if "linux" in name:
+            platform = "linux"
+        if "win" in name:
+            assert platform is None
+            platform = "windows"
+        if "mac" in name:
+            assert platform is None
+            platform = "mac"
+
     if not platform:
-        raise Exception("Unknown platform")
+        raise Exception(f"Unknown platform for {task}")
 
     # Weird case for android build on Linux docker
     if platform == "linux" and tags.get("android-stuff"):
