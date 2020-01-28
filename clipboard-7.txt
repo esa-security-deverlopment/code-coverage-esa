@@ -1,0 +1,7 @@
+https://hub.docker.com/_/node/
+https://fonts.googleapis.com/css?family=Comfortaa|Open+Sans:300,400,400i,600,600i,700
+https://cdn.mouseflow.com/projects/31c8bb38-cfeb-4bd8-a60c-d5650a6d6f23.js
+https://cdn-pci.optimizely.com/js/14166430330.js
+https://a14166430330.cdn-pci.optimizely.com/client_storage/a14166430330.html
+https://hub.docker.com/favicon.ico
+https://logx.optimizely.com/v1/events
